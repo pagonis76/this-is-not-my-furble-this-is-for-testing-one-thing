@@ -40,5 +40,12 @@
         "buttons": [
             { "title": "nothing bruh", "action": [75,0,0,0] }
         ]
+    },
+    { 
+        "file": "PERSCYC2.DLC", 
+        "title": "personality cycle (ALL CREDITS TO FURBLORD, IT IS FURBLORDS WORK.)",
+        "buttons": [
+            { "title": "nothing bruh", "action": [75,0,0,0] }
+        ]
     }
 ]
