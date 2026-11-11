@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Furby Web Bluetooth</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <link rel='stylesheet' href='furble.css'>
+</head>
+<body>
+
+<!-- for slide-in status messages -->
+<div id='status' class='ok'>Connected!</div>
+
+<!-- menu button and menu -->
+<button id='hamburger'>☰</button>
+<div id='menu'>
+    <h2>FurBLE</h2>
+    <ul>
+        <li><a href='#actions'>Actions</a></li>
+        <li><a href='#misc'>Misc</a></li>
+        <li><a href='#dlc'>DLC Upload</a></li>
+        <li><a href='#sensors'>Sensors</a></li>
+        <li><a href='#debug'>Debug</a></li>
+    </ul>
+</div>
+
+
+<div class='header'>
+        <button id='connbtn' onclick='doConnectDisconnect()'>Connect</button>
+        <button id='addbtn' onclick='doAddFurby()'>Add another Furby</button>
+        <select id='sendto' onchange='setSendTarget(this.value)'><option value='all'>All Furbys</option></select>
+    <div><h1>FurBLE</h1>
+    <span id='state'>Not connected</span></div>
+    
+</div>
+
+<div id='furby-buttons'>
+
+    <section id='misc'>
+        <h2>Antenna Colour</h2>
+        <div class='row'>
+            <button onclick='setAntennaColor(255, 0,0)'>Red</button>
+            <button onclick='setAntennaColor(0, 255,0)'>Green</button>
+            <button onclick='setAntennaColor(0, 0, 255)'>Blue</button>
+            <button onclick='setAntennaColor(255, 255, 255)'>White</button>
+        </div>
+    </section>
+
+    <section id='personality'>
+        <h2>Personality (patched firmware only)</h2>
+        <div class='row'>
+            <button onclick='setPersonality(0)'>Normal</button>
+            <button onclick='setPersonality(1)'>DJ</button>
+            <button onclick='setPersonality(2)'>Princess</button>
+            <button onclick='setPersonality(3)'>Ninja</button>
+            <button onclick='setPersonality(4)'>Pirate</button>
+            <button onclick='setPersonality(5)'>Cat</button>
+            <button onclick='setPersonality(6)'>PopStar</button>
+        </div>
+    </section>
+
+    <section id='actions'>
+        <h2>Action Sequences</h2>
+        <div class='row' id='dlc-actions'></div>
+        <div class='row'>
+            <button onclick='triggerAction(39,3,8,1)'>Legendary!</button>
+            <button onclick='triggerAction(39,4,6,1)'>Nice</button>
+            <button onclick='triggerAction(39,3,1,1)'>Hey, hey</button>
+        </div>
+        <div class='row'>
+            <input type='number' min='0' max='75' name='furby-action' value='39'>
+            <input type='number' min='0' max='4' name='furby-action' value='0'>
+            <input type='number' min='0' max='30' name='furby-action' value='0'>
+            <input type='number' min='0' max='10' name='furby-action' value='0'>
+            <button onclick='customAction()'>Send</button>
+        </div>
+    </section>
+
+    <section id='debug'>
+        <h2>Debug</h2>
+        <div class='row'>
+            <button onclick='cycleDebug()'>Eye Debug</button>
+            <button onclick='enableEyes(false)'>Eyes off</button>
+            <button onclick='enableEyes(true)'>Eyes on</button>
+        </div>
+    </section>
+
+    <section id='dlc'>
+        <h2>DLC Files</h2>
+        <div class='row'>
+            <select id='dlcname'></select>
+            <button onclick='dlcUploadClicked()'>Upload</button>
+            <button onclick='dlcActivateClicked()'>Activate</button>
+        </div>
+        <progress id='dlcprogress'></progress>
+    </section>
+
+    <section id='sensors'>
+        <h2>Sensors</h2>
+        <!--<div class='row'>
+                <button onclick='sendGPCmd([0x20, 0x0d])'>Start continuous</button>
+                <button onclick='sendGPCmd([0x20, 0x0e])'>Stop continuous</button>
+        </div>
+        <h2>State</h2>-->
+        <ul id='sensor-state'><li>Waiting for connection...</li></ul>
+    </section>
+
+    <section id='no-web-bluetooth'>
+        <h3>Sorry, this browser doesn't seem to support Web Bluetooth. Works best with Chrome for Android.</h3>
+    </section>
+</div>
+
+
+<div id="console">
+    <button onclick='log2clipboard()' class='clip'>Copy to Clipboard</button> <h3 onclick='toggleConsole()'>Log Output</h3>
+<div id="out" style="white-space:pre"></div>
+</div>
+
+<script>
+var dlcsel = document.getElementById('dlcname');
+var s = document.createElement('script');
+s.src = 'furble.js?' + Math.random();
+document.body.appendChild(s);
+s.onload = () => {
+    log('ready!');
+    enableButtons(false);
+    updateCurrentSection();
+    loadDLCIndex();
+}
+    
+var out = document.getElementById('out');
+out.addEventListener('transitionend', e => out.scrollTop=out.scrollHeight);
+function toggleConsole() {
+    document.getElementById('console').classList.toggle('expanded');
+}
+
+document.querySelectorAll('input[type=number]').forEach(el => {
+    el.addEventListener('focus', () => {
+        el.select();
+        document.body.classList.add('keyboard');
+    });
+    el.addEventListener('blur', el => document.body.classList.remove('keyboard'));
+})
+
+function showStatus(msg, cls) {
+    let el = document.getElementById('status');
+    el.className = '';
+    el.classList.add('on');
+    el.classList.add(cls);
+    el.textContent = msg;
+    setTimeout(() => el.classList.remove('on'), 1500);
+    log(cls + ': ' + msg);
+}
+
+var msg = {
+    ok: s => showStatus(s, 'ok'),
+    error: s => showStatus(s, 'error'),
+};
+
+function updateCurrentSection() {
+    let current = location.hash.substr(1);
+    if (current == '') current = 'dlc';
+    if ('bluetooth' in navigator === false) 
+        current = 'no-web-bluetooth';
+    showSection(current);
+}
+
+window.onhashchange = updateCurrentSection; 
+let currentSection = '';
+let dlcdata = {};
+
+
+function showSection(section) {
+    if (currentSection) {
+        try {
+            document.querySelector('section#' + currentSection).classList.remove('current');
+            document.querySelector(`a[href="#${currentSection}`).classList.remove('current');
+        } catch (e) {}
+        
+    }
+    currentSection = section;
+    document.querySelector('section#' + currentSection).classList.add('current');
+    document.querySelector(`a[href="#${currentSection}`).classList.add('current');
+}
+
+async function loadDLCIndex() {
+    let resp = await fetch('dlc/index.js', {cache: 'no-store'});
+    let data = await resp.json();
+
+    for (let dlc of data) {
+        let opt = document.createElement('option');
+        if (dlc.file.length > 12) {
+            log('DLC filename must be <= 12 chars, got ' + dlc.file);
+        }
+            
+        dlcdata[dlc.file] = dlc;
+        opt.value = dlc.file;
+        opt.textContent = dlc.title;
+        dlcsel.appendChild(opt);
+    }
+}
+
+let dlcUploading = false;
+async function dlcUploadClicked() {
+    if (dlcUploading) {
+        console.log('Upload already running, ignoring extra press');
+        return;
+    }
+    dlcUploading = true;
+    try {
+        let dlcfile = dlcsel.options[dlcsel.selectedIndex].value;
+        let params = dlcdata[dlcfile];
+        console.log('DLC upload clicked', params);
+        let url = 'dlc/' + dlcfile;
+        let buf = await fetchDLC(url);
+        // Step 1: upload to every selected Furby. Nothing gets switched on yet.
+        let uploaded = [], failed = [];
+        await forEachTarget(async (f, i, n) => {
+            let label = n > 1 ? f.name + ' (' + (i + 1) + ' of ' + n + '): ' : '';
+            try {
+                let slot = await uploadDLCOnly(buf, url, label);
+                uploaded.push({f: f, slot: slot});
+                msg.ok(label + 'uploaded');
+            } catch (e) {
+                failed.push(f.name);
+                log(f.name + ' upload failed: ' + (e && e.message ? e.message : e));
+                await setAntennaColor(255,0,0).catch(() => {});
+            }
+        });
+        if (uploaded.length == 0 && failed.length == 0) return;
+        if (failed.length) {
+            msg.error('Upload failed on ' + failed.join(', ') + ', so no Furby switched to the new DLC. Press Upload to try again.');
+            return;
+        }
+        // Step 2: everyone has it, so switch it on for all of them.
+        let ok = true;
+        for (let u of uploaded) {
+            if (!u.f.ready) { ok = false; log(u.f.name + ' dropped before activating'); continue; }
+            let prevT = sendTarget, prevC = furby_chars;
+            sendTarget = u.f.id; furby_chars = u.f.chars;
+            try {
+                msg.ok((uploaded.length > 1 ? u.f.name + ': ' : '') + 'Activating...');
+                await activateUploadedDLC(u.slot);
+                await setAntennaColor(0,255,0);
+            } catch (e) {
+                ok = false;
+                log(u.f.name + ' activate failed: ' + (e && e.message ? e.message : e));
+                await setAntennaColor(255,0,0).catch(() => {});
+            } finally {
+                sendTarget = prevT; furby_chars = furbies.length ? furbies[0].chars : prevC;
+            }
+        }
+        if (!ok) { msg.error('Some Furbys did not switch on the DLC, press Activate to try again'); return; }
+        msg.ok(uploaded.length > 1 ? 'DLC on all ' + uploaded.length + ' Furbys!' : 'DLC activated!');
+        setupDLCButtons(params);
+        showSection('actions');
+    } catch (e) {
+        msg.error('DLC upload failed :( ' + (e && e.message ? e.message : e));
+    } finally {
+        dlcUploading = false;
+        updateTargets();
+    }
+}
+
+// Activates a DLC that's already on the Furby (no upload needed).
+// Uses the slot whose name matches the DLC picked in the list,
+// or the only uploaded DLC if there's just one.
+async function dlcActivateClicked() {
+    if (dlcUploading) {
+        msg.error('Wait for the upload to finish first');
+        return;
+    }
+    dlcUploading = true;
+    try {
+        let dlcfile = dlcsel.options[dlcsel.selectedIndex].value;
+        let params = dlcdata[dlcfile];
+        let wanted = dlcfile.replace(/\.dlc$/i, '').toUpperCase();
+        msg.ok('Checking every Furby has ' + dlcfile + '...');
+        // Step 1: find the DLC on every selected Furby. If one is missing it,
+        // don't switch anyone over, so they all stay on the same DLC.
+        let found = [], missing = [];
+        await forEachTarget(async (f) => {
+            try {
+                let slots = await getDLCInfo();
+                let slot = -1, used = [];
+                for (let i = 0; i < slots.length; i++) {
+                    if (slots[i] == SLOT_EMPTY) continue;
+                    used.push(i);
+                    let info = await getDLCSlotInfo(i);
+                    if (info.name && info.name.replace(/^_+/, '').toUpperCase().startsWith(wanted.substr(0, 8)))
+                        slot = i;
+                }
+                if (slot == -1 && used.length == 1) slot = used[0];
+                if (slot == -1) missing.push(f.name);
+                else found.push({f: f, slot: slot, slots: slots, used: used});
+            } catch (e) {
+                missing.push(f.name);
+                log(f.name + ': ' + e.message);
+            }
+        });
+        if (missing.length) {
+            msg.error(dlcfile + ' is not on ' + missing.join(', ') + '. Press Upload first, nobody was switched.');
+            return;
+        }
+        if (found.length == 0) return;
+        // Step 2: everyone has it, switch it on for all of them.
+        let ok = true;
+        for (let x of found) {
+            let prevT = sendTarget;
+            sendTarget = x.f.id; furby_chars = x.f.chars;
+            try {
+                msg.ok((found.length > 1 ? x.f.name + ': ' : '') + 'Activating... (big DLCs can take up to a minute)');
+                for (let i of x.used)
+                    if (x.slots[i] == SLOT_ACTIVE && i != x.slot) await deactivateDLC(i);
+                await loadAndActivateDLC(x.slot);
+                let slots = await getDLCInfo();
+                if (slots[x.slot] != SLOT_ACTIVE)
+                    throw new Error('Furby did not activate it');
+                await setAntennaColor(0,255,0);
+            } catch (e) {
+                ok = false;
+                log(x.f.name + ' activate failed: ' + e.message);
+                await setAntennaColor(255,0,0).catch(() => {});
+            } finally {
+                sendTarget = prevT;
+                if (furbies.length) furby_chars = furbies[0].chars;
+            }
+        }
+        if (!ok) { msg.error('Some Furbys did not switch on the DLC, press Activate to try again'); return; }
+        msg.ok(found.length > 1 ? 'DLC on all ' + found.length + ' Furbys!' : 'DLC activated!');
+        setupDLCButtons(params);
+        showSection('actions');
+    } catch (e) {
+        msg.error('DLC activation failed :( ' + e.message);
+        log(e.message);
+    } finally {
+        dlcUploading = false;
+        updateTargets();
+    }
+}
+
+function setupDLCButtons(dlcParams) {
+    let container = document.getElementById('dlc-actions');
+    container.childNodes.forEach(el => el.parentNode.removeChild(el));
+    dlcParams.buttons.forEach(p => {
+        let button = document.createElement('button');
+        button.textContent = p.title;
+        button.onclick = () => {
+            log('Triggering ' + p.title + ' for dlc ' + dlcParams.file);
+            triggerAction.apply(null, p.action);
+        };
+        container.appendChild(button);
+    });
+}
+
+function log2clipboard() {
+    let range = document.createRange();
+    range.selectNode(out);
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    msg.ok('Copied to clipboard');
+}
+
+</script>
+
+</body>
+</html>

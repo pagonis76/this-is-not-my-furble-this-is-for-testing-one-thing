@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>furbulator web</title>
+<style>
+  :root { --bg:#14141c; --panel:#1e1e2a; --text:#e8e6f0; --muted:#9a97ad; --accent:#c58cff; --border:#333348; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; margin:14px 0; }
+  button, label.btn { display:inline-block; background:var(--accent); color:#1a1024; border:0; border-radius:8px; padding:9px 16px; font:600 14px system-ui, sans-serif; cursor:pointer; margin:4px 6px 4px 0; }
+  button.secondary, label.btn.secondary { background:transparent; color:var(--text); border:1px solid var(--border); }
+  button:disabled { opacity:.5; cursor:default; }
+  input[type=file] { display:none; }
+  #stage { display:none; }
+  #canvas { display:block; max-width:100%; height:auto; margin:0 auto; background:#000; border-radius:6px; outline:none; image-rendering: pixelated; }
+  #status { min-height: 1.5em; }
+  #bar { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:8px 0; }
+  table { border-collapse: collapse; font-size: 13px; }
+  td { padding: 2px 12px 2px 0; vertical-align: top; }
+  td:first-child { color: var(--accent); white-space: nowrap; font-family: ui-monospace, monospace; }
+  .progress { height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:8px; display:none; }
+  .progress > div { height:100%; width:0; background:var(--accent); transition: width .2s; }
+</style>
+</head>
+<body>
+<main>
+  <p class="muted"><a href="../">← Furby Connect tools</a></p>
+  <h1>furbulator <span class="muted">web</span></h1>
+  <p class="muted">The <a href="https://github.com/FurbLord/furbulator">furbulator</a> Furby Connect emulator by FurbLord, compiled to WebAssembly. It runs the toy's real firmware in your browser. Unofficial, not affiliated with Hasbro. furbulator is MIT licensed (<a href="LICENSE-furbulator.txt">license</a>).</p>
+
+  <div class="card" id="setup">
+    <p><b>You need the Furby ROM pack</b> (<code>furby-connect.fcrom</code>). Download it from the
+      <a href="https://github.com/FurbLord/furbulator/releases/latest" target="_blank" rel="noopener">furbulator releases page</a>, then pick it here.
+      It stays on your computer: the page keeps a copy in your browser so you only pick it once.</p>
+    <label class="btn" for="romfile">Choose furby-connect.fcrom</label>
+    <input type="file" id="romfile" accept=".fcrom">
+    <button id="startsaved" style="display:none">Start with saved ROM</button>
+    <button id="forget" class="secondary" style="display:none">Forget saved ROM</button>
+    <p id="status" class="muted">Loading the emulator…</p>
+    <div class="progress" id="prog"><div></div></div>
+  </div>
+
+  <div id="stage">
+    <div id="bar">
+      <label class="btn" for="dlcfile">Upload a DLC…</label>
+      <input type="file" id="dlcfile" accept=".dlc,.DLC">
+      <button class="secondary" id="fs">Fullscreen</button>
+      <span class="muted" id="hint">Click the Furby first so it gets your keyboard.</span>
+    </div>
+    <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  </div>
+
+  <div class="card">
+    <b>Controls</b>
+    <table>
+      <tr><td>1–4</td><td>antenna (hold)</td></tr>
+      <tr><td>5 / 6</td><td>tongue / tail (hold)</td></tr>
+      <tr><td>U / arrows / K</td><td>upside down / tilt / shake</td></tr>
+      <tr><td>N</td><td>noise into the microphone (hold)</td></tr>
+      <tr><td>Z / P</td><td>sleep mask / cycle personalities</td></tr>
+      <tr><td>R / Shift+R</td><td>reboot / reboot with fresh memory</td></tr>
+      <tr><td>Space / F / M</td><td>pause / speed limit / mute</td></tr>
+      <tr><td>F1</td><td>full key list</td></tr>
+    </table>
+    <p class="muted">Tools → Bluetooth console sends app commands. The Furby falls asleep after about a minute without interaction, like the real one: touch a sensor or shake it to wake it.</p>
+    <p class="muted">The % in the status bar is the speed. If your computer can't keep up, <b>Emulation → Speed boost</b> (Auto by default) lets the emulated chip do less spare work so it stays at full speed. The Chrome or Edge browsers are usually fastest.</p>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const status = t => { $('status').textContent = t; };
+const DB = 'furbulator-web', STORE = 'files', KEY = 'rom';
+
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) {
+  try { const db = await idb(); return await new Promise((res, rej) => { const q = db.transaction(STORE).objectStore(STORE).get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+  catch (e) { return undefined; }
+}
+async function idbPut(k, v) {
+  try { const db = await idb(); await new Promise((res, rej) => { const t = db.transaction(STORE, 'readwrite'); t.objectStore(STORE).put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); return true; }
+  catch (e) { return false; }
+}
+async function idbDel(k) {
+  try { const db = await idb(); await new Promise(res => { const t = db.transaction(STORE, 'readwrite'); t.objectStore(STORE).delete(k); t.oncomplete = res; t.onerror = res; }); } catch (e) {}
+}
+
+let ready = false, started = false;
+var Module = {
+  canvas: $('canvas'),
+  print: t => console.log(t),
+  printErr: t => console.warn(t),
+  onRuntimeInitialized: () => { ready = true; checkSaved(); },
+};
+
+async function checkSaved() {
+  const saved = await idbGet(KEY);
+  if (saved && saved.data) {
+    $('startsaved').style.display = '';
+    $('forget').style.display = '';
+    status(`Ready. Saved ROM: ${saved.name} (${(saved.data.byteLength / 1048576).toFixed(1)} MB).`);
+  } else {
+    status('Ready. Choose the ROM pack to start.');
+  }
+}
+
+function start(bytes) {
+  if (started || !ready) return;
+  started = true;
+  const head = new TextDecoder().decode(bytes.subarray(0, 8));
+  try { Module.FS.mkdir('/roms'); } catch (e) {}
+  Module.FS.writeFile('/roms/furby-connect.fcrom', bytes);
+  $('setup').style.display = 'none';
+  $('stage').style.display = 'block';
+  $('canvas').focus();
+  try { Module.callMain([]); } catch (e) { if (e !== 'unwind' && !(e && e.name === 'ExitStatus')) throw e; }
+}
+
+$('romfile').addEventListener('change', async ev => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  status(`Reading ${f.name}…`);
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  status('Saving a copy in your browser…');
+  await idbPut(KEY, { name: f.name, data: bytes });
+  start(bytes);
+});
+$('startsaved').addEventListener('click', async () => {
+  status('Loading saved ROM…');
+  const saved = await idbGet(KEY);
+  if (saved && saved.data) start(new Uint8Array(saved.data));
+  else status('The saved ROM is gone. Choose it again.');
+});
+$('forget').addEventListener('click', async () => {
+  await idbDel(KEY);
+  $('startsaved').style.display = 'none';
+  $('forget').style.display = 'none';
+  status('Saved ROM removed. Choose the ROM pack to start.');
+});
+$('dlcfile').addEventListener('change', async ev => {
+  const f = ev.target.files[0];
+  if (!f || !started) return;
+  const name = f.name.replace(/[^A-Za-z0-9._-]/g, '_');
+  try { Module.FS.mkdir('/dlc'); } catch (e) {}
+  Module.FS.writeFile('/dlc/' + name, new Uint8Array(await f.arrayBuffer()));
+  Module.ccall('web_drop_file', null, ['string'], ['/dlc/' + name]);
+  ev.target.value = '';
+  $('canvas').focus();
+});
+$('fs').addEventListener('click', () => $('canvas').requestFullscreen && $('canvas').requestFullscreen());
+$('canvas').addEventListener('mousedown', () => $('canvas').focus());
+// Drag and drop a .fcrom or .dlc onto the page.
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  if (!started) {
+    if (/\.fcrom$/i.test(f.name)) { await idbPut(KEY, { name: f.name, data: bytes }); start(bytes); }
+    return;
+  }
+  const name = f.name.replace(/[^A-Za-z0-9._-]/g, '_');
+  const dir = /\.fcrom$/i.test(f.name) ? '/roms/' : '/dlc/';
+  try { Module.FS.mkdir(dir.slice(0, -1)); } catch (err) {}
+  Module.FS.writeFile(dir + name, bytes);
+  Module.ccall('web_drop_file', null, ['string'], [dir + name]);
+});
+</script>
+<script src="furbulator.js" async></script>
+</body>
+</html>

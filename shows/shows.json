@@ -1,0 +1,28 @@
+[
+  {
+    "id": "pigeon",
+    "title": "One little pigeon",
+    "video": "shows/pigeon-sound.mp4",
+    "dlc": "dlc/pigsing.dlc",
+    "song": [
+      75,
+      0,
+      0,
+      0
+    ],
+    "cues": []
+  },
+  {
+    "id": "seanopry",
+    "title": "Sean opry edit",
+    "video": "shows/seanopry.mp4",
+    "dlc": "dlc/seanopry.dlc",
+    "song": [
+      75,
+      0,
+      0,
+      0
+    ],
+    "cues": []
+  }
+]
