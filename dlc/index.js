@@ -45,7 +45,7 @@
         "file": "PERSCYC2.DLC", 
         "title": "personality cycle (ALL CREDITS TO FURBLORD, IT IS FURBLORDS WORK.)",
         "buttons": [
-            { "title": "cycle personality by pressing and holding the mouth, and moving the antenna (while disconnected)", "action": [75,0,0,0] }
+            { "title": "cycle personality by pressing and holding the mouth, and moving the antenna (only while disconnected)", "action": [75,0,0,0] }
         ]
     }
 ]
