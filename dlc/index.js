@@ -7,28 +7,28 @@
         ]
     },
     { 
-        "file": "princ.DLC", 
+        "file": "princ.dlc", 
         "title": "overwrite base personality with princess (reverts with factory resets)",
         "buttons": [
             { "title": "nothing bruh", "action": [75,0,0,0] }
         ]
     },
     { 
-        "file": "DJ.DLC", 
+        "file": "DJ.dlc", 
         "title": "overwrite base personality with DJ (reverts with factory resets)",
         "buttons": [
             { "title": "nothing bruh", "action": [75,0,0,0] }
         ]
     },
     { 
-        "file": "ninj.DLC", 
+        "file": "ninj.dlc", 
         "title": "overwrite base personality with ninja (reverts with factory resets)",
         "buttons": [
             { "title": "nothing bruh", "action": [75,0,0,0] }
         ]
     },
     { 
-        "file": "cat.DLC", 
+        "file": "cat.dlc", 
         "title": "overwrite base personality with cat (reverts with factory resets)",
         "buttons": [
             { "title": "nothing bruh", "action": [75,0,0,0] }
