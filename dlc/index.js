@@ -42,10 +42,10 @@
         ]
     },
     { 
-        "file": "PERSCYC2.DLC", 
-        "title": "personality cycle (ALL CREDITS TO FURBLORD, IT IS FURBLORDS WORK.)",
+        "file": "PERS.dlc", 
+        "title": "personality code patch",
         "buttons": [
-            { "title": "cycle personality by pressing and holding the mouth, and moving the antenna (only while disconnected)", "action": [75,0,0,0] }
+            { "title": "send custom hex codes 200A00 to 200A06 to change the personality", "action": [75,0,0,0] }
         ]
     }
 ]
